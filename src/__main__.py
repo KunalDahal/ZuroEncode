@@ -3,16 +3,18 @@ import os
 from pyrogram import Client
 from dotenv import load_dotenv
 
-from core.task_queue import TaskQueue
-from src.core.user_setting import UserSettings
-from services.downloader import Downloader
-from services.encoder import Encoder
-from src.core.ffmpeg import FFmpeg
-from services.uploader import Uploader
-from handlers.encode import setup_encode_handlers
-from handlers.settings import setup_settings_handlers
-from src.services.worker import Worker
-from utils.config import Config
+from src import (
+    TaskQueue,
+    UserSettings,
+    FFmpeg,
+    Downloader,
+    Encoder,
+    Uploader,
+    Worker,
+    Config,
+    setup_encode_handlers,
+    setup_settings_handlers,
+)
 
 load_dotenv()
 
