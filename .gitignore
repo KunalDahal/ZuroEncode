@@ -42,10 +42,11 @@ logs/
 *.db
 *.sqlite
 
+log/
 # Temporary files
 tmp/
 temp/
-
+db/
 .env
 .venv/
 __pycache__/

@@ -4,14 +4,19 @@ import os
 
 
 class FFmpeg:
-    def __init__(self, ffmpeg_path: str = "ffmpeg"):
+    def __init__(self, ffmpeg_path: str = "./src/bin/ffmpeg"):
         self.ffmpeg_path = ffmpeg_path
 
     def build_command(self, input_path: str, output_path: str, settings: Dict[str, Any]) -> List[str]:
-        """Build FFmpeg command from settings"""
         cmd = [self.ffmpeg_path, "-i", input_path, "-y"]
         
-        # Video codec
+        # Map all streams
+        cmd.extend(["-map", "0"])
+        
+        # Copy all codecs first, then apply changes
+        cmd.extend(["-c", "copy"])
+        
+        # Video codec - override if specified
         if settings.get("codec"):
             cmd.extend(["-c:v", settings["codec"]])
         
@@ -28,12 +33,14 @@ class FFmpeg:
             height = settings["resolution"].replace("p", "")
             cmd.extend(["-vf", f"scale=-2:{height}"])
         
-        # Audio settings
-        cmd.extend(["-c:a", "aac"])
+        # Audio settings - override if specified
         if settings.get("audio_bitrate"):
-            cmd.extend(["-b:a", settings["audio_bitrate"]])
+            cmd.extend(["-c:a", "aac", "-b:a", settings["audio_bitrate"]])
         
-        # Metadata
+        # Remove all metadata and set custom metadata
+        cmd.extend(["-map_metadata", "-1", "-map_chapters", "-1"])
+        
+        # Add custom metadata from user settings
         metadata = settings.get("metadata", {})
         if metadata.get("title"):
             cmd.extend(["-metadata", f"title={metadata['title']}"])
@@ -50,11 +57,16 @@ class FFmpeg:
                 "-disposition:v:1", "attached_pic"
             ])
         
+        if not output_path.startswith("./src/log/tmp/"):
+            filename = os.path.basename(output_path)
+            output_path = os.path.join("./src/log/tmp/", filename)
+        
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        
         cmd.append(output_path)
         return cmd
 
     async def execute(self, cmd: List[str]) -> bool:
-
         try:
             process = await asyncio.create_subprocess_exec(
                 *cmd,

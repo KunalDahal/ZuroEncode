@@ -22,7 +22,6 @@ class EncodeBot:
     def __init__(self):
         self.config = Config()
         self.task_queue = TaskQueue()
-        self.user_settings = UserSettings(self.config.settings_file)
         self.ffmpeg = FFmpeg(self.config.ffmpeg_path)
         self.downloader = Downloader(self.config.temp_dir)
         self.encoder = Encoder(self.ffmpeg)
@@ -32,25 +31,29 @@ class EncodeBot:
 
     async def initialize(self):
         self.app = Client(
-            "encode_bot",
-            bot_token=self.config.bot_token,
+            name="encode_bot",
+            session_string=self.config.session_string,
             api_id=self.config.api_id,
             api_hash=self.config.api_hash,
-            workdir=self.config.temp_dir
+            workdir=self.config.temp_dir,
+            in_memory=True
         )
+        
+        await self.app.start()
         
         self.uploader = Uploader(self.app)
         self.worker = Worker(
             self.task_queue,
-            self.user_settings,
+            UserSettings,
             self.ffmpeg,
-            self.app,
-            self.config.temp_dir
+            self.app
         )
+        
+        self.task_queue.set_worker(self.worker)
 
-        setup_encode_handlers(self.app, self.task_queue, self.user_settings, 
+        setup_encode_handlers(self.app, self.task_queue, UserSettings, 
                              self.downloader, self.encoder, self.uploader, self.ffmpeg)
-        setup_settings_handlers(self.app, self.user_settings)
+        setup_settings_handlers(self.app, UserSettings)
 
         return self.app
 
@@ -59,12 +62,27 @@ class EncodeBot:
         
         asyncio.create_task(self.worker.start())
         
-        print(f"Bot started! Allowed group: {self.config.allowed_group_id}")
-        await self.app.run()
+        me = await self.app.get_me()
+        print(f"Bot started as @{me.username}!")
+        print(f"Allowed groups: {self.config.allowed_group_ids}")
+        
+        # Keep the bot running
+        await asyncio.Event().wait()
+
+    async def stop(self):
+        if self.worker:
+            await self.worker.stop()
+        if self.app:
+            await self.app.stop()
 
 async def main():
     bot = EncodeBot()
-    await bot.start()
+    try:
+        await bot.start()
+    except KeyboardInterrupt:
+        print("\nBot stopped by user")
+    finally:
+        await bot.stop()
 
 if __name__ == "__main__":
     asyncio.run(main())
