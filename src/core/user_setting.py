@@ -6,13 +6,13 @@ from typing import Dict, Any
 class UserSettings:
     def __init__(self, user_id: int):
         self.user_id = user_id
-        self.db_folder = "./src/log/db"
+        self.db_folder = "./src/bin/users"
         os.makedirs(self.db_folder, exist_ok=True)
 
         self.storage_path = os.path.join(self.db_folder, f"{self.user_id}.json")
 
         self.data: Dict[str, Any] = {}
-        self.temp_state: Dict[int, str] = {}
+        self.temp_state: Dict[int, Dict] = {}
 
         self._load()
 
@@ -22,9 +22,12 @@ class UserSettings:
                 with open(self.storage_path, "r") as f:
                     self.data = json.load(f)
             except:
-                self.data = {}
+                self.data = self._get_default_settings()
         else:
-            self.data = {}
+            self.data = self._get_default_settings()
+        
+        if "metadata" not in self.data:
+            self.data["metadata"] = {"title": "", "author": "", "encoder": ""}
 
     def _save(self):
         try:
@@ -33,15 +36,9 @@ class UserSettings:
         except:
             pass
 
-    def _get_default_settings(
-        self,
-        name: str = "",
-        username: str = ""
-    ) -> Dict[str, Any]:
+    def _get_default_settings(self) -> Dict[str, Any]:
         return {
             "user_id": self.user_id,
-            "name": name,
-            "username": username,
             "resolution": "1080p",
             "crf": 28,
             "preset": "medium",
@@ -55,47 +52,36 @@ class UserSettings:
             "thumbnail_path": ""
         }
 
-    def get(self, name: str = "", username: str = "") -> Dict[str, Any]:
-        if not self.data:
-            self.data = self._get_default_settings(name, username)
-            self._save()
+    def get(self) -> Dict[str, Any]:
         return self.data
 
-    def update(self, key: str, value: Any, name: str = "", username: str = ""):
-        self.get(name, username)
+    def update(self, key: str, value: Any):
         if key in self.data:
             self.data[key] = value
             self._save()
 
     def update_metadata(
         self,
-        title: str = "",
-        author: str = "",
-        encoder: str = "",
-        name: str = "",
-        username: str = ""
+        title: str = None,
+        author: str = None,
+        encoder: str = None
     ):
-        self.get(name, username)
-
         if "metadata" not in self.data:
             self.data["metadata"] = {}
 
-        if title:
+        if title is not None:
             self.data["metadata"]["title"] = title
-        if author:
+        if author is not None:
             self.data["metadata"]["author"] = author
-        if encoder:
+        if encoder is not None:
             self.data["metadata"]["encoder"] = encoder
 
         self._save()
 
-    def set_thumbnail(self, path: str, name: str = "", username: str = ""):
-        self.get(name, username)
+    def set_thumbnail(self, path: str):
         self.data["thumbnail_path"] = path
         self._save()
 
     def reset(self):
-        name = self.data.get("name", "")
-        username = self.data.get("username", "")
-        self.data = self._get_default_settings(name, username)
+        self.data = self._get_default_settings()
         self._save()
