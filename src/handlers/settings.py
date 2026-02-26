@@ -1,5 +1,6 @@
 from pyrogram import Client, filters
-from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, InputMediaPhoto
+import os
 
 def setup_settings_handlers(app: Client, user_settings):
     
@@ -10,10 +11,10 @@ def setup_settings_handlers(app: Client, user_settings):
         name = f"{user.first_name or ''} {user.last_name or ''}".strip()
         username = user.username or ""
         
-        settings = user_settings.get(user_id, name, username)
+        settings = user_settings(user_id).get()
         
         text = (
-            f"🎛️ **Your Encoding Settings**\n\n"
+            f"**Your Encoding Settings**\n\n"
             f"**User:** {name} (@{username if username else 'N/A'})\n"
             f"**ID:** `{user_id}`\n\n"
             f"**Video:**\n"
@@ -31,25 +32,36 @@ def setup_settings_handlers(app: Client, user_settings):
         )
         
         keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("📺 Resolution", callback_data="set_resolution"),
-             InlineKeyboardButton("🎚️ CRF", callback_data="set_crf")],
-            [InlineKeyboardButton("⚡ Preset", callback_data="set_preset"),
-             InlineKeyboardButton("🎬 Codec", callback_data="set_codec")],
-            [InlineKeyboardButton("🔊 Audio Bit Rate", callback_data="set_audio_bitrate"),
-             InlineKeyboardButton("📝 Metadata", callback_data="set_metadata")],
-            [InlineKeyboardButton("🖼️ Thumbnail", callback_data="set_thumbnail"),
-             InlineKeyboardButton("🔄 Reset", callback_data="reset_settings")]
+            [InlineKeyboardButton("Resolution", callback_data="set_resolution"),
+             InlineKeyboardButton("CRF", callback_data="set_crf")],
+            [InlineKeyboardButton("Preset", callback_data="set_preset"),
+             InlineKeyboardButton("Codec", callback_data="set_codec")],
+            [InlineKeyboardButton("Audio Bit Rate", callback_data="set_audio_bitrate"),
+             InlineKeyboardButton("Metadata", callback_data="set_metadata")],
+            [InlineKeyboardButton("Thumbnail", callback_data="set_thumbnail")],
+            [InlineKeyboardButton("Reset All", callback_data="reset_settings")]
         ])
         
-        await message.reply_text(text, reply_markup=keyboard)
+        thumbnail_path = settings['thumbnail_path'] if settings['thumbnail_path'] and os.path.exists(settings['thumbnail_path']) else "./src/bin/default.jpg"
+        
+        if os.path.exists(thumbnail_path):
+            try:
+                await message.reply_photo(
+                    photo=thumbnail_path,
+                    caption=text,
+                    reply_markup=keyboard
+                )
+            except Exception:
+                await message.reply_text(text, reply_markup=keyboard)
+        else:
+            await message.reply_text(text, reply_markup=keyboard)
 
     @app.on_callback_query()
     async def handle_callbacks(client: Client, callback_query: CallbackQuery):
         user = callback_query.from_user
         user_id = user.id
-        name = f"{user.first_name or ''} {user.last_name or ''}".strip()
-        username = user.username or ""
         data = callback_query.data
+        message = callback_query.message
 
         if data == "set_resolution":
             keyboard = InlineKeyboardMarkup([
@@ -59,22 +71,25 @@ def setup_settings_handlers(app: Client, user_settings):
                  InlineKeyboardButton("360p", callback_data="res_360p")],
                 [InlineKeyboardButton("◀️ Back", callback_data="back_to_menu")]
             ])
-            await callback_query.message.edit_text(
+            await message.edit_text(
                 "Select resolution:",
                 reply_markup=keyboard
             )
 
         elif data.startswith("res_"):
             resolution = data.replace("res_", "")
-            user_settings.update(user_id, "resolution", resolution, name, username)
+            user_settings(user_id).update("resolution", resolution)
             await callback_query.answer(f"Resolution set to {resolution}")
-            await us_command(client, callback_query.message)
+            await update_main_menu(client, message, user_id)
 
         elif data == "set_crf":
-            await callback_query.message.edit_text(
-                "Send CRF value (0-58):\nLower = better quality, higher = smaller file"
+            sent_message = await message.edit_text(
+                "Send CRF value (0-58):\nLower = better quality, higher = smaller file\n\nUse /cancel to go back."
             )
-            user_settings.temp_state[user_id] = "waiting_crf"
+            user_settings(user_id).temp_state[user_id] = {
+                "state": "waiting_crf",
+                "prompt_message_id": sent_message.id
+            }
 
         elif data == "set_preset":
             keyboard = InlineKeyboardMarkup([
@@ -89,16 +104,16 @@ def setup_settings_handlers(app: Client, user_settings):
                 [InlineKeyboardButton("veryslow", callback_data="preset_veryslow")],
                 [InlineKeyboardButton("◀️ Back", callback_data="back_to_menu")]
             ])
-            await callback_query.message.edit_text(
+            await message.edit_text(
                 "Select preset:",
                 reply_markup=keyboard
             )
 
         elif data.startswith("preset_"):
             preset = data.replace("preset_", "")
-            user_settings.update(user_id, "preset", preset, name, username)
+            user_settings(user_id).update("preset", preset)
             await callback_query.answer(f"Preset set to {preset}")
-            await us_command(client, callback_query.message)
+            await update_main_menu(client, message, user_id)
 
         elif data == "set_codec":
             keyboard = InlineKeyboardMarkup([
@@ -106,16 +121,16 @@ def setup_settings_handlers(app: Client, user_settings):
                  InlineKeyboardButton("H.265 (libx265)", callback_data="codec_libx265")],
                 [InlineKeyboardButton("◀️ Back", callback_data="back_to_menu")]
             ])
-            await callback_query.message.edit_text(
+            await message.edit_text(
                 "Select codec:",
                 reply_markup=keyboard
             )
 
         elif data.startswith("codec_"):
             codec = data.replace("codec_", "")
-            user_settings.update(user_id, "codec", codec, name, username)
+            user_settings(user_id).update("codec", codec)
             await callback_query.answer(f"Codec set to {codec}")
-            await us_command(client, callback_query.message)
+            await update_main_menu(client, message, user_id)
 
         elif data == "set_audio_bitrate":
             keyboard = InlineKeyboardMarkup([
@@ -125,16 +140,16 @@ def setup_settings_handlers(app: Client, user_settings):
                  InlineKeyboardButton("320k", callback_data="abit_320k")],
                 [InlineKeyboardButton("◀️ Back", callback_data="back_to_menu")]
             ])
-            await callback_query.message.edit_text(
+            await message.edit_text(
                 "Select audio bitrate:",
                 reply_markup=keyboard
             )
 
         elif data.startswith("abit_"):
             bitrate = data.replace("abit_", "")
-            user_settings.update(user_id, "audio_bitrate", bitrate, name, username)
+            user_settings(user_id).update("audio_bitrate", bitrate)
             await callback_query.answer(f"Audio bitrate set to {bitrate}")
-            await us_command(client, callback_query.message)
+            await update_main_menu(client, message, user_id)
 
         elif data == "set_metadata":
             keyboard = InlineKeyboardMarkup([
@@ -144,58 +159,156 @@ def setup_settings_handlers(app: Client, user_settings):
                  InlineKeyboardButton("Clear All", callback_data="meta_clear")],
                 [InlineKeyboardButton("◀️ Back", callback_data="back_to_menu")]
             ])
-            await callback_query.message.edit_text(
+            await message.edit_text(
                 "Metadata options:",
                 reply_markup=keyboard
             )
 
         elif data == "meta_title":
-            await callback_query.message.edit_text("Send the title for your videos:")
-            user_settings.temp_state[user_id] = "waiting_meta_title"
+            sent_message = await message.edit_text(
+                "Send the title for your videos:\n\nUse /cancel to go back."
+            )
+            user_settings(user_id).temp_state[user_id] = {
+                "state": "waiting_meta_title",
+                "prompt_message_id": sent_message.id
+            }
 
         elif data == "meta_author":
-            await callback_query.message.edit_text("Send the author name:")
-            user_settings.temp_state[user_id] = "waiting_meta_author"
+            sent_message = await message.edit_text(
+                "Send the author name:\n\nUse /cancel to go back."
+            )
+            user_settings(user_id).temp_state[user_id] = {
+                "state": "waiting_meta_author",
+                "prompt_message_id": sent_message.id
+            }
 
         elif data == "meta_encoder":
-            await callback_query.message.edit_text("Send the encoder name:")
-            user_settings.temp_state[user_id] = "waiting_meta_encoder"
+            sent_message = await message.edit_text(
+                "Send the encoder name:\n\nUse /cancel to go back."
+            )
+            user_settings(user_id).temp_state[user_id] = {
+                "state": "waiting_meta_encoder",
+                "prompt_message_id": sent_message.id
+            }
 
         elif data == "meta_clear":
-            user_settings.update_metadata(user_id, "", "", "", name, username)
+            user_settings(user_id).update_metadata(title="", author="", encoder="")
             await callback_query.answer("Metadata cleared")
-            await us_command(client, callback_query.message)
+            await update_main_menu(client, message, user_id)
 
         elif data == "set_thumbnail":
-            await callback_query.message.edit_text(
-                "Send me an image to use as thumbnail.\nSend /skip to keep current."
+            sent_message = await message.edit_text(
+                "Send me an image to use as thumbnail.\nUse /cancel to go back."
             )
-            user_settings.temp_state[user_id] = "waiting_thumbnail"
+            user_settings(user_id).temp_state[user_id] = {
+                "state": "waiting_thumbnail",
+                "prompt_message_id": sent_message.id
+            }
 
         elif data == "reset_settings":
-            user_settings.reset(user_id)
+            user_settings(user_id).reset()
             await callback_query.answer("Settings reset to defaults!")
-            await us_command(client, callback_query.message)
+            await update_main_menu(client, message, user_id)
 
         elif data == "back_to_menu":
-            await us_command(client, callback_query.message)
+            await update_main_menu(client, message, user_id)
+
+        await callback_query.answer()
+
+    async def update_main_menu(client, message, user_id):
+        user = await client.get_users(user_id)
+        name = f"{user.first_name or ''} {user.last_name or ''}".strip()
+        username = user.username or ""
+        
+        settings = user_settings(user_id).get()
+        
+        text = (
+            f"**Your Encoding Settings**\n\n"
+            f"**User:** {name} (@{username if username else 'N/A'})\n"
+            f"**ID:** `{user_id}`\n\n"
+            f"**Video:**\n"
+            f"• Resolution: `{settings['resolution']}`\n"
+            f"• CRF: `{settings['crf']}`\n"
+            f"• Preset: `{settings['preset']}`\n"
+            f"• Codec: `{settings['codec']}`\n\n"
+            f"**Audio:**\n"
+            f"• Bitrate: `{settings['audio_bitrate']}`\n\n"
+            f"**Metadata:**\n"
+            f"• Title: `{settings['metadata']['title'] or 'None'}`\n"
+            f"• Author: `{settings['metadata']['author'] or 'None'}`\n"
+            f"• Encoder: `{settings['metadata']['encoder'] or 'None'}`\n\n"
+            f"**Thumbnail:** {'✅ Set' if settings['thumbnail_path'] else '❌ Not set'}"
+        )
+        
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("Resolution", callback_data="set_resolution"),
+             InlineKeyboardButton("CRF", callback_data="set_crf")],
+            [InlineKeyboardButton("Preset", callback_data="set_preset"),
+             InlineKeyboardButton("Codec", callback_data="set_codec")],
+            [InlineKeyboardButton("Audio Bit Rate", callback_data="set_audio_bitrate"),
+             InlineKeyboardButton("Metadata", callback_data="set_metadata")],
+            [InlineKeyboardButton("Thumbnail", callback_data="set_thumbnail")],
+            [InlineKeyboardButton("Reset All", callback_data="reset_settings")]
+        ])
+        
+        thumbnail_path = settings['thumbnail_path'] if settings['thumbnail_path'] and os.path.exists(settings['thumbnail_path']) else "./src/bin/default.jpg"
+        
+        try:
+            if message.photo:
+                await message.edit_media(
+                    media=InputMediaPhoto(
+                        media=thumbnail_path,
+                        caption=text
+                    ),
+                    reply_markup=keyboard
+                )
+            elif message.text:
+                await message.delete()
+                await client.send_photo(
+                    chat_id=user_id,
+                    photo=thumbnail_path,
+                    caption=text,
+                    reply_markup=keyboard
+                )
+            else:
+                await message.edit_text(text, reply_markup=keyboard)
+        except Exception:
+            try:
+                await message.edit_text(text, reply_markup=keyboard)
+            except Exception:
+                await client.send_message(
+                    chat_id=user_id,
+                    text=text,
+                    reply_markup=keyboard
+                )
 
     @app.on_message(filters.text & filters.private)
     async def handle_text_input(client: Client, message: Message):
         user_id = message.from_user.id
-        name = f"{message.from_user.first_name or ''} {message.from_user.last_name or ''}".strip()
-        username = message.from_user.username or ""
         
-        if user_id in user_settings.temp_state:
-            state = user_settings.temp_state[user_id]
+        if message.text.startswith('/'):
+            return
+            
+        if user_id in user_settings(user_id).temp_state:
+            state_data = user_settings(user_id).temp_state[user_id]
+            state = state_data["state"] if isinstance(state_data, dict) else state_data
+            prompt_message_id = state_data.get("prompt_message_id") if isinstance(state_data, dict) else None
             
             if state == "waiting_crf":
                 try:
                     crf = int(message.text)
                     if 0 <= crf <= 58:
-                        user_settings.update(user_id, "crf", crf, name, username)
-                        del user_settings.temp_state[user_id]
-                        await message.reply_text(f"✅ CRF set to {crf}")
+                        user_settings(user_id).update("crf", crf)
+                        del user_settings(user_id).temp_state[user_id]
+                        
+                        try:
+                            await client.delete_messages(
+                                chat_id=user_id,
+                                message_ids=[prompt_message_id, message.id]
+                            )
+                        except Exception:
+                            pass
+                            
                         await us_command(client, message)
                     else:
                         await message.reply_text("❌ CRF must be between 0 and 58")
@@ -203,40 +316,94 @@ def setup_settings_handlers(app: Client, user_settings):
                     await message.reply_text("❌ Please send a valid number")
                     
             elif state == "waiting_meta_title":
-                user_settings.update_metadata(user_id, title=message.text, name=name, username=username)
-                del user_settings.temp_state[user_id]
-                await message.reply_text(f"✅ Title set to: {message.text}")
+                user_settings(user_id).update_metadata(title=message.text)
+                del user_settings(user_id).temp_state[user_id]
+                
+                try:
+                    await client.delete_messages(
+                        chat_id=user_id,
+                        message_ids=[prompt_message_id, message.id]
+                    )
+                except Exception:
+                    pass
+                    
                 await us_command(client, message)
                 
             elif state == "waiting_meta_author":
-                user_settings.update_metadata(user_id, author=message.text, name=name, username=username)
-                del user_settings.temp_state[user_id]
-                await message.reply_text(f"✅ Author set to: {message.text}")
+                user_settings(user_id).update_metadata(author=message.text)
+                del user_settings(user_id).temp_state[user_id]
+                
+                try:
+                    await client.delete_messages(
+                        chat_id=user_id,
+                        message_ids=[prompt_message_id, message.id]
+                    )
+                except Exception:
+                    pass
+                    
                 await us_command(client, message)
                 
             elif state == "waiting_meta_encoder":
-                user_settings.update_metadata(user_id, encoder=message.text, name=name, username=username)
-                del user_settings.temp_state[user_id]
-                await message.reply_text(f"✅ Encoder set to: {message.text}")
+                user_settings(user_id).update_metadata(encoder=message.text)
+                del user_settings(user_id).temp_state[user_id]
+                
+                try:
+                    await client.delete_messages(
+                        chat_id=user_id,
+                        message_ids=[prompt_message_id, message.id]
+                    )
+                except Exception:
+                    pass
+                    
                 await us_command(client, message)
 
-    @app.on_message(filters.command("skip") & filters.private)
-    async def skip_command(client: Client, message: Message):
+    @app.on_message(filters.command("cancel") & filters.private)
+    async def cancel_command(client: Client, message: Message):
         user_id = message.from_user.id
-        if user_id in user_settings.temp_state:
-            del user_settings.temp_state[user_id]
-        await message.reply_text("Skipped.")
-        await us_command(client, message)
+        
+        if user_id in user_settings(user_id).temp_state:
+            state_data = user_settings(user_id).temp_state[user_id]
+            prompt_message_id = state_data.get("prompt_message_id") if isinstance(state_data, dict) else None
+            
+            del user_settings(user_id).temp_state[user_id]
+            
+            try:
+                if prompt_message_id:
+                    await client.delete_messages(
+                        chat_id=user_id,
+                        message_ids=[prompt_message_id, message.id]
+                    )
+                else:
+                    await message.delete()
+            except Exception:
+                pass
+                
+            await us_command(client, message)
+        else:
+            await message.reply_text("Nothing to cancel.")
 
     @app.on_message(filters.photo & filters.private)
     async def handle_thumbnail(client: Client, message: Message):
         user_id = message.from_user.id
-        name = f"{message.from_user.first_name or ''} {message.from_user.last_name or ''}".strip()
-        username = message.from_user.username or ""
         
-        if user_id in user_settings.temp_state and user_settings.temp_state[user_id] == "waiting_thumbnail":
-            file_path = await message.download(file_name=f"thumb_{user_id}.jpg")
-            user_settings.set_thumbnail(user_id, file_path, name, username)
-            del user_settings.temp_state[user_id]
-            await message.reply_text("✅ Thumbnail set!")
-            await us_command(client, message)
+        if user_id in user_settings(user_id).temp_state:
+            state_data = user_settings(user_id).temp_state[user_id]
+            if isinstance(state_data, dict) and state_data.get("state") == "waiting_thumbnail":
+                prompt_message_id = state_data.get("prompt_message_id")
+                
+                thumb_dir = "./src/bin/users/thumbs"
+                os.makedirs(thumb_dir, exist_ok=True)
+                file_path = os.path.join(thumb_dir, f"{user_id}_thumb.jpg")
+                await message.download(file_name=file_path)
+                user_settings(user_id).set_thumbnail(file_path)
+                del user_settings(user_id).temp_state[user_id]
+                
+                try:
+                    await client.delete_messages(
+                        chat_id=user_id,
+                        message_ids=[prompt_message_id, message.id]
+                    )
+                except Exception:
+                    pass
+                    
+                await us_command(client, message)
