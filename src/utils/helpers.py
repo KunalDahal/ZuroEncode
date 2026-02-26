@@ -17,3 +17,8 @@ with Client(
     session_string = app.export_session_string()
     print("\nYour Session String:\n")
     print(session_string)
+
+def progress_bar(percentage: float, length: int = 12):
+    filled = int(length * percentage // 100)
+    bar = "█" * filled + "░" * (length - filled)
+    return f"{bar} {percentage:.1f}%"

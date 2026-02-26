@@ -73,8 +73,6 @@ class FFmpeg:
         return cmd
     
     async def execute(self, cmd):
-        error_output = []
-        
         try:
             process = await asyncio.create_subprocess_exec(
                 *cmd,
@@ -82,23 +80,11 @@ class FFmpeg:
                 stderr=asyncio.subprocess.PIPE
             )
             
-            while True:
-                line = await process.stderr.readline()
-                if not line:
-                    break
-                line = line.decode('utf-8', errors='ignore').strip()
-                error_output.append(line)
-            
             stdout, stderr = await process.communicate()
             
-            if stderr:
-                stderr_text = stderr.decode('utf-8', errors='ignore')
-                error_output.append(stderr_text)
-            
             if process.returncode != 0:
-                errors = [line for line in error_output if 'error' in line.lower() or 'failed' in line.lower()]
-                error_msg = "\n".join(errors[-10:]) if errors else "\n".join(error_output[-20:])
-                return False, f"FFmpeg error (code {process.returncode}): {error_msg[:500]}"
+                error_msg = stderr.decode('utf-8', errors='ignore')[:500]
+                return False, f"FFmpeg error (code {process.returncode}): {error_msg}"
             
             output_file = cmd[-1]
             if not os.path.exists(output_file):

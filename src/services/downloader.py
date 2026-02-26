@@ -1,18 +1,23 @@
 import os
 import asyncio
+import time
 
 class Downloader:
     def __init__(self, temp_base: str):
         self.temp_base = temp_base
+        self._last_time = None
+        self._last_bytes = 0
         os.makedirs(self.temp_base, exist_ok=True)
         self.download_progress = {
             "total_size": 0,
             "downloaded": 0,
             "percentage": 0,
             "speed": 0,
-            "remaining": 0,
+            "eta": 0,
+            "elapsed": 0,
             "status": "idle"
         }
+        self._start_time = None
 
     async def download(self, client, task_data: dict) -> str:
         task_id = task_data["task_id"]
@@ -27,14 +32,12 @@ class Downloader:
         try:
             self._reset_progress()
             self.download_progress["status"] = "downloading"
+            self._start_time = time.time()
             
-            await asyncio.wait_for(
-                client.download_media(
-                    file_id, 
-                    file_name=file_path,
-                    progress=self._progress_callback
-                ),
-                timeout=300
+            await client.download_media(
+                file_id, 
+                file_name=file_path,
+                progress=self._progress_callback
             )
             
             if not os.path.exists(file_path) or os.path.getsize(file_path) == 0:
@@ -43,9 +46,6 @@ class Downloader:
             self.download_progress["status"] = "completed"
             return file_path
                 
-        except asyncio.TimeoutError:
-            self.download_progress["status"] = "failed"
-            raise Exception("Download timeout")
         except Exception as e:
             self.download_progress["status"] = "failed"
             raise Exception(f"Download failed: {str(e)}")
@@ -56,20 +56,44 @@ class Downloader:
             "downloaded": 0,
             "percentage": 0,
             "speed": 0,
-            "remaining": 0,
+            "eta": 0,
+            "elapsed": 0,
             "status": "idle"
         }
+        self._last_time = None
+        self._last_bytes = 0
+        self._start_time = None
 
     async def _progress_callback(self, current, total):
-        if total > 0:
-            percentage = (current / total) * 100
-            self.download_progress.update({
-                "total_size": total,
-                "downloaded": current,
-                "percentage": round(percentage, 2),
-                "remaining": total - current,
-                "status": "downloading"
-            })
+        now = time.time()
+        
+        if self.download_progress["total_size"] == 0:
+            self.download_progress["total_size"] = total
+
+        if self._last_time is None:
+            self._last_time = now
+            self._last_bytes = current
+            return
+
+        elapsed = now - self._last_time
+        speed = (current - self._last_bytes) / elapsed if elapsed > 0 else 0
+
+        self._last_time = now
+        self._last_bytes = current
+
+        percentage = (current / total) * 100 if total > 0 else 0
+        remaining = total - current
+        eta = remaining / speed if speed > 0 else 0
+        total_elapsed = now - self._start_time if self._start_time else 0
+
+        self.download_progress.update({
+            "downloaded": current,
+            "percentage": round(percentage, 2),
+            "speed": round(speed, 2),
+            "eta": int(eta),
+            "elapsed": int(total_elapsed),
+            "status": "downloading"
+        })
 
     def get_progress(self) -> dict:
         return self.download_progress.copy()

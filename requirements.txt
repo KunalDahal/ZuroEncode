@@ -4,3 +4,4 @@ python-dotenv
 aiohttp
 FFmpeg-python
 pydantic
+psutil

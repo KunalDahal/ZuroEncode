@@ -1,16 +1,21 @@
 import os
 import shutil
+import time
 
 class Uploader:
     def __init__(self, client, task_data: dict):
         self.client = client
         self.task_data = task_data
+        self._last_time = None
+        self._last_bytes = 0
+        self._start_time = None
         self.upload_progress = {
             "total_size": 0,
             "uploaded": 0,
             "percentage": 0,
             "speed": 0,
-            "remaining": 0,
+            "eta": 0,
+            "elapsed": 0,
             "status": "idle"
         }
 
@@ -38,15 +43,15 @@ class Uploader:
             raise Exception("File not found after renaming")
         
         file_size = os.path.getsize(final_file_path)
-        file_size_mb = file_size / (1024 * 1024)
         
         self.upload_progress["total_size"] = file_size
         self.upload_progress["status"] = "uploading"
+        self._start_time = time.time()
+        self._last_time = None
+        self._last_bytes = 0
         
         try:
-            caption = (
-                f"`{output_file_name}`\n"
-            )
+            caption = f"`{output_file_name}`\n"
             
             thumb = thumbnail_path if thumbnail_path and os.path.exists(thumbnail_path) else None
             
@@ -75,21 +80,35 @@ class Uploader:
             
         except Exception as e:
             self.upload_progress["status"] = "failed"
-            error_msg = f"Upload failed: {str(e)}"
-            raise Exception(error_msg)
+            raise Exception(f"Upload failed: {str(e)}")
 
     async def _progress_callback(self, current, total):
-        if total > 0:
-            percentage = (current / total) * 100
-            self.upload_progress.update({
-                "uploaded": current,
-                "percentage": round(percentage, 2),
-                "remaining": total - current,
-                "total_size": total
-            })
-            
-            if int(percentage) % 10 == 0 and int(percentage) > 0:
-                percentage_str = f"{percentage:.2f}%"
+        now = time.time()
+
+        if self._last_time is None:
+            self._last_time = now
+            self._last_bytes = current
+            return
+
+        elapsed = now - self._last_time
+        speed = (current - self._last_bytes) / elapsed if elapsed > 0 else 0
+
+        self._last_time = now
+        self._last_bytes = current
+
+        percentage = (current / total) * 100 if total > 0 else 0
+        remaining = total - current
+        eta = remaining / speed if speed > 0 else 0
+        total_elapsed = now - self._start_time if self._start_time else 0
+
+        self.upload_progress.update({
+            "uploaded": current,
+            "percentage": round(percentage, 2),
+            "speed": round(speed, 2),
+            "eta": int(eta),
+            "elapsed": int(total_elapsed),
+            "status": "uploading"
+        })
 
     def get_progress(self) -> dict:
         return self.upload_progress.copy()
