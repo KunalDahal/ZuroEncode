@@ -1,79 +1,123 @@
-import asyncio
-from typing import Dict, Any, List
 import os
-
+import asyncio
+import logging
 
 class FFmpeg:
-    def __init__(self, ffmpeg_path: str = "./src/bin/ffmpeg"):
-        self.ffmpeg_path = ffmpeg_path
-
-    def build_command(self, input_path: str, output_path: str, settings: Dict[str, Any]) -> List[str]:
-        cmd = [self.ffmpeg_path, "-i", input_path, "-y"]
+    def __init__(self):
+        self.encode_progress = 0
+        self.current_stage = ""
         
-        # Map all streams
-        cmd.extend(["-map", "0"])
+    def _get_resolution_dimensions(self, resolution_str):
+        resolution_map = {
+            '1080p': '1920x1080',
+            '720p': '1280x720',
+            '480p': '854x480',
+            '360p': '640x360'
+        }
         
-        # Copy all codecs first, then apply changes
-        cmd.extend(["-c", "copy"])
+        clean_res = resolution_str.lower().strip()
+        if not clean_res.endswith('p'):
+            clean_res = clean_res + 'p'
         
-        # Video codec - override if specified
-        if settings.get("codec"):
-            cmd.extend(["-c:v", settings["codec"]])
+        if clean_res in resolution_map:
+            return resolution_map[clean_res]
         
-        # Preset
-        if settings.get("preset"):
-            cmd.extend(["-preset", settings["preset"]])
-        
-        # CRF (quality)
-        if settings.get("crf") is not None:
-            cmd.extend(["-crf", str(settings["crf"])])
-        
-        # Resolution
-        if settings.get("resolution"):
-            height = settings["resolution"].replace("p", "")
-            cmd.extend(["-vf", f"scale=-2:{height}"])
-        
-        # Audio settings - override if specified
-        if settings.get("audio_bitrate"):
-            cmd.extend(["-c:a", "aac", "-b:a", settings["audio_bitrate"]])
-        
-        # Remove all metadata and set custom metadata
-        cmd.extend(["-map_metadata", "-1", "-map_chapters", "-1"])
-        
-        # Add custom metadata from user settings
-        metadata = settings.get("metadata", {})
-        if metadata.get("title"):
-            cmd.extend(["-metadata", f"title={metadata['title']}"])
-        if metadata.get("author"):
-            cmd.extend(["-metadata", f"artist={metadata['author']}"])
-        if metadata.get("encoder"):
-            cmd.extend(["-metadata", f"encoder={metadata['encoder']}"])
-        
-        # Thumbnail (if exists)
-        if settings.get("thumbnail_path") and os.path.exists(settings["thumbnail_path"]):
-            cmd.extend([
-                "-i", settings["thumbnail_path"],
-                "-map", "1", "-map", "0",
-                "-disposition:v:1", "attached_pic"
-            ])
-        
-        if not output_path.startswith("./src/log/tmp/"):
-            filename = os.path.basename(output_path)
-            output_path = os.path.join("./src/log/tmp/", filename)
-        
+        return '1920x1080'
+    
+    def build_command(self, input_path, output_path, settings):
+        input_path = os.path.abspath(input_path)
+        output_path = os.path.abspath(output_path)
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         
-        cmd.append(output_path)
-        return cmd
+        resolution_str = settings.get('resolution', '1080p')
+        dimensions = self._get_resolution_dimensions(resolution_str)
 
-    async def execute(self, cmd: List[str]) -> bool:
+        width, height = dimensions.split('x')
+        
+        codec = settings.get('codec', 'libx264')
+        if codec not in ['libx264', 'libx265', 'h264', 'h265']:
+            codec = 'libx264'
+        
+        cmd = [
+            'ffmpeg',
+            '-i', input_path,
+            '-c:v', codec,
+            '-preset', settings.get('preset', 'medium'),
+            '-crf', str(settings.get('crf', 23)),
+            '-vf', f'scale={dimensions}:force_original_aspect_ratio=decrease,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2',
+            '-pix_fmt', 'yuv420p',
+            '-c:a', 'aac',
+            '-b:a', settings.get('audio_bitrate', '128k'),
+            '-movflags', '+faststart',
+        ]
+        
+        metadata = settings.get('metadata', {})
+        
+        if metadata.get('title') and metadata['title'].strip():
+            title = metadata['title'].strip().replace('"', '\\"').replace("'", "\\'")
+            cmd.extend(['-metadata', f'title={title}'])
+        
+        if metadata.get('author') and metadata['author'].strip():
+            author = metadata['author'].strip().replace('"', '\\"').replace("'", "\\'")
+            cmd.extend(['-metadata', f'artist={author}'])
+        
+        if metadata.get('encoder') and metadata['encoder'].strip():
+            encoder = metadata['encoder'].strip().replace('"', '\\"').replace("'", "\\'")
+            cmd.extend(['-metadata', f'encoder={encoder}'])
+        
+        cmd.extend(['-y', output_path])
+        
+        logging.info(f"FFmpeg command: {' '.join(cmd)}")
+        return cmd
+    
+    async def execute(self, cmd):
+        error_output = []
+        
         try:
             process = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
-            await process.communicate()
-            return process.returncode == 0
-        except Exception:
-            return False
+            
+            while True:
+                line = await process.stderr.readline()
+                if not line:
+                    break
+                line = line.decode('utf-8', errors='ignore').strip()
+                error_output.append(line)
+                logging.debug(f"FFmpeg: {line[:200]}")
+            
+            stdout, stderr = await process.communicate()
+            
+            if stderr:
+                stderr_text = stderr.decode('utf-8', errors='ignore')
+                error_output.append(stderr_text)
+            
+            if process.returncode != 0:
+                errors = [line for line in error_output if 'error' in line.lower() or 'failed' in line.lower()]
+                error_msg = "\n".join(errors[-10:]) if errors else "\n".join(error_output[-20:])
+                logging.error(f"FFmpeg error (code {process.returncode}): {error_msg}")
+                return False, f"FFmpeg error (code {process.returncode}): {error_msg[:500]}"
+            
+            output_file = cmd[-1]
+            if not os.path.exists(output_file):
+                return False, f"Output file not created: {output_file}"
+            
+            if os.path.getsize(output_file) == 0:
+                return False, f"Output file is empty: {output_file}"
+            
+            return True, None
+            
+        except FileNotFoundError:
+            return False, "FFmpeg not found in system PATH. Please install FFmpeg"
+        except asyncio.CancelledError:
+            if 'process' in locals():
+                try:
+                    process.terminate()
+                    await process.wait()
+                except:
+                    pass
+            return False, "Process cancelled by user"
+        except Exception as e:
+            return False, f"Unexpected error: {str(e)}"

@@ -1,1 +1,16 @@
-# compose
+
+services:
+  video-encoder-bot:
+    build: .
+    container_name: telegram-video-encoder
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./src/bin:/app/src/bin
+      - ./encode_bot.session:/app/encode_bot.session
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

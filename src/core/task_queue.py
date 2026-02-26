@@ -8,25 +8,26 @@ class TaskQueue:
         self.processing = False
         self.lock = asyncio.Lock()
         self.tasks = {}
-        self.worker = None
-
-    def set_worker(self, worker):
-        self.worker = worker
+        self.current_task = None
 
     def create_task(self, task_data):
-        task_id = str(uuid.uuid4())
+        task_id = str(uuid.uuid4())[:8]
         now = datetime.utcnow().isoformat()
         
         task = {
             "task_id": task_id,
             "user_id": task_data["user_id"],
             "chat_id": task_data["chat_id"],
+            "message_id": task_data.get("message_id"),
             "file_id": task_data["file_id"],
             "original_file_name": task_data["original_file_name"],
-            "output_file_name": task_data["output_filename"],
-            "split_size": task_data["split_size"],
+            "output_filename": task_data["output_filename"],
             "created_at": now,
-            "status": "queued"
+            "started_at": None,
+            "status": "queued",
+            "file_size": task_data.get("file_size"),
+            "progress": 0,
+            "settings": task_data.get("settings", {})
         }
         
         self.tasks[task_id] = task
@@ -37,43 +38,51 @@ class TaskQueue:
     def get_task(self, task_id):
         return self.tasks.get(task_id)
 
-    def update_status(self, task_id, status):
-        if task_id in self.tasks and status in ["queued", "downloading", "encoding", "uploading"]:
+    def update_status(self, task_id, status, progress=None):
+        if task_id in self.tasks:
             self.tasks[task_id]["status"] = status
+            if progress is not None:
+                self.tasks[task_id]["progress"] = progress
+            
+            if status in ["downloading", "encoding", "uploading"] and not self.tasks[task_id].get("started_at"):
+                self.tasks[task_id]["started_at"] = datetime.utcnow().isoformat()
 
     def remove_task(self, task_id):
         if task_id in self.tasks:
             del self.tasks[task_id]
         if task_id in self.queue:
             self.queue.remove(task_id)
+        if self.current_task == task_id:
+            self.current_task = None
 
     def get_next_task(self):
         for task_id in self.queue:
-            if self.tasks.get(task_id, {}).get("status") == "queued":
-                return self.tasks[task_id]
+            task = self.tasks.get(task_id)
+            if task and task.get("status") == "queued":
+                self.current_task = task_id
+                return task
         return None
 
     def get_queue_position(self, task_id):
         try:
             position = 1
             for tid in self.queue:
-                if tid == task_id:
-                    return position
-                if self.tasks.get(tid, {}).get("status") == "queued":
+                task = self.tasks.get(tid)
+                if task and task.get("status") in ["queued", "downloading", "encoding", "uploading"]:
+                    if tid == task_id:
+                        return position
                     position += 1
             return 0
         except:
             return 0
-
-    def get_queue_count(self):
-        queued_count = 0
-        for task_id in self.queue:
-            if self.tasks.get(task_id, {}).get("status") == "queued":
-                queued_count += 1
-        return queued_count
 
     def is_processing(self):
         return self.processing
     
     def set_processing(self, status):
         self.processing = status
+
+    def get_current_task(self):
+        if self.current_task:
+            return self.tasks.get(self.current_task)
+        return None

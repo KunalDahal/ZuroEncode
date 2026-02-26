@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.9-slim
 
 WORKDIR /app
 
@@ -7,10 +7,18 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
+
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+# Copy all files
+COPY run.py .
+COPY src/ ./src/
+COPY .env .
+COPY encode_bot.session* ./
 
-RUN mkdir -p tmp logs
+RUN mkdir -p src/bin/ffmpeg src/bin/tmp src/bin/users src/bin/logs
 
-CMD ["python", "-m", "src"]
+ENV PYTHONUNBUFFERED=1
+
+# Use run.py as entry point
+CMD ["python", "run.py"]

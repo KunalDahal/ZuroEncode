@@ -4,11 +4,11 @@ from dotenv import load_dotenv
 
 
 class Config:
-    
     def __init__(self):
         load_dotenv()
         
-        self.session_string: str = os.getenv("SESSION_STRING", "")
+        # Changed from session_string to bot_token
+        self.bot_token: str = os.getenv("BOT_TOKEN", "")
         self.api_id: int = int(os.getenv("API_ID", "0"))
         self.api_hash: str = os.getenv("API_HASH", "")
         
@@ -20,8 +20,8 @@ class Config:
             except ValueError:
                 pass
         
-        self.ffmpeg_path: str = os.getenv("FFMPEG_PATH", "./src/bin/ffmpeg")
-        self.temp_dir: str = "./src/log/tmp"
+        self.ffmpeg_path: str = "./src/bin/ffmpeg"
+        self.temp_dir: str = "./src/bin/tmp"
         
         admin_ids_str = os.getenv("ADMIN_IDS", "")
         self.admin_ids: List[int] = []
@@ -34,8 +34,8 @@ class Config:
         self._validate()
     
     def _validate(self):
-        if not self.session_string:
-            raise ValueError("SESSION_STRING is required")
+        if not self.bot_token:
+            raise ValueError("BOT_TOKEN is required")
         if not self.api_id:
             raise ValueError("API_ID is required")
         if not self.api_hash:

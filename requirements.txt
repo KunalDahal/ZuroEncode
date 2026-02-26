@@ -1,5 +1,5 @@
 pyrogram
-# tgcrypto>=1.2.5
+tgcrypto
 python-dotenv
 aiohttp
 FFmpeg-python

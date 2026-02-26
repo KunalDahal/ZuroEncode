@@ -2,7 +2,6 @@ import json
 import os
 from typing import Dict, Any
 
-
 class UserSettings:
     def __init__(self, user_id: int):
         self.user_id = user_id
@@ -28,6 +27,8 @@ class UserSettings:
         
         if "metadata" not in self.data:
             self.data["metadata"] = {"title": "", "author": "", "encoder": ""}
+        if "send_type" not in self.data:
+            self.data["send_type"] = "media"
 
     def _save(self):
         try:
@@ -44,6 +45,7 @@ class UserSettings:
             "preset": "medium",
             "codec": "libx264",
             "audio_bitrate": "128k",
+            "send_type": "media",
             "metadata": {
                 "title": "",
                 "author": "",
@@ -60,12 +62,7 @@ class UserSettings:
             self.data[key] = value
             self._save()
 
-    def update_metadata(
-        self,
-        title: str = None,
-        author: str = None,
-        encoder: str = None
-    ):
+    def update_metadata(self, title: str = None, author: str = None, encoder: str = None):
         if "metadata" not in self.data:
             self.data["metadata"] = {}
 

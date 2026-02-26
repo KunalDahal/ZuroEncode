@@ -1,17 +1,24 @@
 from pyrogram import Client, filters
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, InputMediaPhoto
 import os
+from src import Config
+
+config=Config()
 
 def setup_settings_handlers(app: Client, user_settings):
     
     @app.on_message(filters.command("us") & filters.private)
     async def us_command(client: Client, message: Message):
+        if message.from_user.id not in config.admin_ids:
+            await message.reply_text("Invalid!")
+            return
         user = message.from_user
         user_id = user.id
         name = f"{user.first_name or ''} {user.last_name or ''}".strip()
         username = user.username or ""
         
         settings = user_settings(user_id).get()
+
         
         text = (
             f"**Your Encoding Settings**\n\n"
@@ -24,6 +31,7 @@ def setup_settings_handlers(app: Client, user_settings):
             f"• Codec: `{settings['codec']}`\n\n"
             f"**Audio:**\n"
             f"• Bitrate: `{settings['audio_bitrate']}`\n\n"
+            f"**Send Type:** `{'Media' if settings['send_type'] == 'media' else 'Document'}`\n"
             f"**Metadata:**\n"
             f"• Title: `{settings['metadata']['title'] or 'None'}`\n"
             f"• Author: `{settings['metadata']['author'] or 'None'}`\n"
@@ -37,9 +45,11 @@ def setup_settings_handlers(app: Client, user_settings):
             [InlineKeyboardButton("Preset", callback_data="set_preset"),
              InlineKeyboardButton("Codec", callback_data="set_codec")],
             [InlineKeyboardButton("Audio Bit Rate", callback_data="set_audio_bitrate"),
-             InlineKeyboardButton("Metadata", callback_data="set_metadata")],
-            [InlineKeyboardButton("Thumbnail", callback_data="set_thumbnail")],
-            [InlineKeyboardButton("Reset All", callback_data="reset_settings")]
+             InlineKeyboardButton("Send Type", callback_data="set_send_type")],
+            [InlineKeyboardButton("Metadata", callback_data="set_metadata"),
+             InlineKeyboardButton("Thumbnail", callback_data="set_thumbnail")],
+            [InlineKeyboardButton("Reset All", callback_data="reset_settings"),
+             InlineKeyboardButton("Close", callback_data="close_menu")]
         ])
         
         thumbnail_path = settings['thumbnail_path'] if settings['thumbnail_path'] and os.path.exists(settings['thumbnail_path']) else "./src/bin/default.jpg"
@@ -56,8 +66,8 @@ def setup_settings_handlers(app: Client, user_settings):
         else:
             await message.reply_text(text, reply_markup=keyboard)
 
-    @app.on_callback_query()
-    async def handle_callbacks(client: Client, callback_query: CallbackQuery):
+    @app.on_callback_query(filters.regex(r'^(set_|res_|preset_|codec_|abit_|sendtype_|meta_|reset_|back_to|close_)'))
+    async def handle_settings_callbacks(client: Client, callback_query: CallbackQuery):
         user = callback_query.from_user
         user_id = user.id
         data = callback_query.data
@@ -151,6 +161,23 @@ def setup_settings_handlers(app: Client, user_settings):
             await callback_query.answer(f"Audio bitrate set to {bitrate}")
             await update_main_menu(client, message, user_id)
 
+        elif data == "set_send_type":
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("Media", callback_data="sendtype_media"),
+                 InlineKeyboardButton("Document", callback_data="sendtype_document")],
+                [InlineKeyboardButton("◀️ Back", callback_data="back_to_menu")]
+            ])
+            await message.edit_text(
+                "Select how to send files:",
+                reply_markup=keyboard
+            )
+
+        elif data.startswith("sendtype_"):
+            send_type = data.replace("sendtype_", "")
+            user_settings(user_id).update("send_type", send_type)
+            await callback_query.answer(f"Send type set to {send_type.capitalize()}")
+            await update_main_menu(client, message, user_id)
+
         elif data == "set_metadata":
             keyboard = InlineKeyboardMarkup([
                 [InlineKeyboardButton("Set Title", callback_data="meta_title"),
@@ -212,6 +239,10 @@ def setup_settings_handlers(app: Client, user_settings):
 
         elif data == "back_to_menu":
             await update_main_menu(client, message, user_id)
+            
+        elif data == "close_menu":
+            await message.delete()
+            await callback_query.answer("Menu closed")
 
         await callback_query.answer()
 
@@ -233,6 +264,7 @@ def setup_settings_handlers(app: Client, user_settings):
             f"• Codec: `{settings['codec']}`\n\n"
             f"**Audio:**\n"
             f"• Bitrate: `{settings['audio_bitrate']}`\n\n"
+            f"**Send Type:** `{'Media' if settings['send_type'] == 'media' else 'Document'}`\n"
             f"**Metadata:**\n"
             f"• Title: `{settings['metadata']['title'] or 'None'}`\n"
             f"• Author: `{settings['metadata']['author'] or 'None'}`\n"
@@ -246,9 +278,11 @@ def setup_settings_handlers(app: Client, user_settings):
             [InlineKeyboardButton("Preset", callback_data="set_preset"),
              InlineKeyboardButton("Codec", callback_data="set_codec")],
             [InlineKeyboardButton("Audio Bit Rate", callback_data="set_audio_bitrate"),
-             InlineKeyboardButton("Metadata", callback_data="set_metadata")],
-            [InlineKeyboardButton("Thumbnail", callback_data="set_thumbnail")],
-            [InlineKeyboardButton("Reset All", callback_data="reset_settings")]
+             InlineKeyboardButton("Send Type", callback_data="set_send_type")],
+            [InlineKeyboardButton("Metadata", callback_data="set_metadata"),
+             InlineKeyboardButton("Thumbnail", callback_data="set_thumbnail")],
+            [InlineKeyboardButton("Reset All", callback_data="reset_settings"),
+             InlineKeyboardButton("Close", callback_data="close_menu")]
         ])
         
         thumbnail_path = settings['thumbnail_path'] if settings['thumbnail_path'] and os.path.exists(settings['thumbnail_path']) else "./src/bin/default.jpg"

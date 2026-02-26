@@ -50,3 +50,4 @@ db/
 .env
 .venv/
 __pycache__/
+bin/
