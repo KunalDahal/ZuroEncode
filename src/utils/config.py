@@ -7,7 +7,6 @@ class Config:
     def __init__(self):
         load_dotenv()
         
-        # Changed from session_string to bot_token
         self.bot_token: str = os.getenv("BOT_TOKEN", "")
         self.api_id: int = int(os.getenv("API_ID", "0"))
         self.api_hash: str = os.getenv("API_HASH", "")

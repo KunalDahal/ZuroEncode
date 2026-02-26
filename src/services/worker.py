@@ -1,12 +1,8 @@
 import asyncio
 import os
 import shutil
-import logging
 from datetime import datetime
 import concurrent.futures
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 class Worker:
     def __init__(self, task_queue, user_settings_getter, ffmpeg, client):
@@ -40,7 +36,6 @@ class Worker:
                 await asyncio.sleep(1)
                 
             except Exception as e:
-                logging.error(f"Worker error: {e}")
                 await asyncio.sleep(5)
 
     async def stop(self):
@@ -115,8 +110,7 @@ class Worker:
                 raise Exception("Encoding failed: output file not found")
 
             self.task_queue.update_status(task_id, "uploading", 80)
-            
-            logger.info(f"DEBUG - send_type value: '{task['send_type']}'")
+
             from src.services.uploader import Uploader
             uploader = Uploader(self.client, task)
             await uploader.upload()
@@ -125,22 +119,21 @@ class Worker:
             
             await self.notify_user(
                 task["user_id"], 
-                f"✅ Task Completed Successfully\n📁 {task['output_filename']}\n🆔 {task_id[:8]}"
+                f"Task 🆔 {task_id[:8]} : {task['output_filename']} completed successfully!"
             )
 
         except asyncio.CancelledError:
             await self.notify_user(
                 task["user_id"],
-                f"❌ Task Cancelled\n🆔 {task_id[:8]}"
+                f"Task Cancelled\n🆔 {task_id[:8]}"
             )
             self.task_queue.remove_task(task_id)
             
         except Exception as e:
             error_msg = str(e)
-            logging.error(f"Task {task_id} failed: {error_msg}")
             await self.notify_user(
                 task["user_id"], 
-                f"❌ Task Failed\nError: {error_msg[:100]}\n🆔 {task_id[:8]}"
+                f"Task Failed\nError: {error_msg[:100]}\n🆔 {task_id[:8]}"
             )
             self.task_queue.remove_task(task_id)
         

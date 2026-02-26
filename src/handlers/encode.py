@@ -1,5 +1,4 @@
 import os
-import uuid
 from datetime import datetime
 from pyrogram import Client, filters
 from pyrogram.types import Message
@@ -55,10 +54,10 @@ async def process_encode_command(client: Client, message: Message, task_queue, u
             original_file_name = replied.document.file_name or f"video_{file_id[:8]}{file_ext}"
             file_size = replied.document.file_size
         else:
-            await message.reply_text("Invalid file type. Only video files are allowed.")
+            await message.reply_text("Invalid file type. Only video files are allowed...")
             return
     else:
-        await message.reply_text("Only video files are allowed.")
+        await message.reply_text("Only video files are allowed...")
         return
 
     if len(message.command) < 2:
@@ -66,7 +65,7 @@ async def process_encode_command(client: Client, message: Message, task_queue, u
     else:
         output_filename = parse_filename_from_command(message.text)
         if not output_filename:
-            await message.reply_text("Invalid filename format.")
+            await message.reply_text("Invalid filename format...")
             return
 
     settings_obj = user_settings(message.from_user.id)
@@ -105,9 +104,5 @@ async def process_encode_command(client: Client, message: Message, task_queue, u
         status = f"⏳ Queued (Position: {position}/{total_in_queue})"
     
     await message.reply_text(
-        f"**Task Added**\n"
-        f"**Task ID:** `{task_id}`\n"
-        f"**Output:** `{output_filename}`\n"
-        f"**Status:** `{status}`\n"
-        f"**Queue Position:** `{position}/{total_in_queue}`"
+        f"**Task Added:** `{task_id}` [`{position}/{total_in_queue}`] || `{output_filename}`\n"
     )

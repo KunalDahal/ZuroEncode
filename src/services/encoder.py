@@ -1,5 +1,4 @@
 import os
-import logging
 
 class Encoder:
     def __init__(self, ffmpeg):
