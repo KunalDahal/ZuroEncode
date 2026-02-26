@@ -13,22 +13,15 @@ class TaskQueue:
     def create_task(self, task_data):
         task_id = str(uuid.uuid4())[:8]
         now = datetime.utcnow().isoformat()
-        
         task = {
             "task_id": task_id,
-            "user_id": task_data["user_id"],
-            "chat_id": task_data["chat_id"],
-            "message_id": task_data.get("message_id"),
-            "file_id": task_data["file_id"],
-            "original_file_name": task_data["original_file_name"],
-            "output_filename": task_data["output_filename"],
             "created_at": now,
             "started_at": None,
             "status": "queued",
-            "file_size": task_data.get("file_size"),
             "progress": 0,
-            "settings": task_data.get("settings", {})
         }
+        
+        task.update(task_data)
         
         self.tasks[task_id] = task
         self.queue.append(task_id)

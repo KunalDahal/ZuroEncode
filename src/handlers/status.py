@@ -4,7 +4,7 @@ from datetime import datetime
 
 def setup_status_handlers(app: Client, task_queue, admin_ids):
     
-    @app.on_message(filters.command("s") & filters.private)
+    @app.on_message(filters.command("status") & filters.private)
     async def status_command(client: Client, message: Message):
         if message.from_user.id not in admin_ids:
             await message.reply_text("❌ You are not authorized to use this command.")
@@ -16,18 +16,14 @@ async def show_status(client: Client, message: Message, task_queue):
     queued_tasks = []
     processing_task = None
     
-    # Get the current processing task
     current_task = task_queue.get_current_task()
     if current_task and current_task["status"] in ["downloading", "encoding", "uploading"]:
         processing_task = current_task
-    
-    # Get all queued tasks from the queue list
-    task_ids = task_queue.queue  # Access the queue list directly
+    task_ids = task_queue.queue 
     
     for task_id in task_ids:
         task = task_queue.get_task(task_id)
         if task:
-            # Skip the currently processing task (already handled above)
             if processing_task and task["task_id"] == processing_task["task_id"]:
                 continue
                 

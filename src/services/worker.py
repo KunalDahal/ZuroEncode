@@ -5,6 +5,9 @@ import logging
 from datetime import datetime
 import concurrent.futures
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 class Worker:
     def __init__(self, task_queue, user_settings_getter, ffmpeg, client):
         self.task_queue = task_queue
@@ -19,6 +22,57 @@ class Worker:
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
         
         os.makedirs(self.temp_base, exist_ok=True)
+
+    async def start(self):
+        self.running = True
+        while self.running:
+            try:
+                if not self.current_task_id and not self.task_queue.is_processing():
+                    next_task = self.task_queue.get_next_task()
+                    if next_task:
+                        self.current_task_id = next_task["task_id"]
+                        self.current_task = next_task
+                        self.task_queue.set_processing(True)
+                        self.task_queue.update_status(self.current_task_id, "queued", 0)
+                        
+                        self.processing_task = asyncio.create_task(self.process_task(self.current_task))
+                
+                await asyncio.sleep(1)
+                
+            except Exception as e:
+                logging.error(f"Worker error: {e}")
+                await asyncio.sleep(5)
+
+    async def stop(self):
+        self.running = False
+        if self.processing_task:
+            self.processing_task.cancel()
+            try:
+                await self.processing_task
+            except:
+                pass
+        self.executor.shutdown(wait=False)
+
+    async def cancel_task(self, task_id: str):
+        if self.current_task_id == task_id and self.processing_task:
+            self.processing_task.cancel()
+            try:
+                await self.processing_task
+            except:
+                pass
+            
+            self.current_task_id = None
+            self.current_task = None
+            self.task_queue.set_processing(False)
+            
+        self.task_queue.remove_task(task_id)
+        
+        task_folder = os.path.join(self.temp_base, task_id)
+        if os.path.exists(task_folder):
+            try:
+                shutil.rmtree(task_folder)
+            except:
+                pass
 
     async def process_task(self, task: dict):
         task_id = task["task_id"]
@@ -62,6 +116,7 @@ class Worker:
 
             self.task_queue.update_status(task_id, "uploading", 80)
             
+            logger.info(f"DEBUG - send_type value: '{task['send_type']}'")
             from src.services.uploader import Uploader
             uploader = Uploader(self.client, task)
             await uploader.upload()
@@ -108,7 +163,6 @@ class Worker:
             self.task_queue.set_processing(False)
 
     def _run_encoding_sync(self, encoder, task, downloaded_path, settings):
-        import asyncio
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:
@@ -121,3 +175,9 @@ class Worker:
             )
         finally:
             loop.close()
+
+    async def notify_user(self, user_id: int, message: str):
+        try:
+            await self.client.send_message(user_id, message)
+        except:
+            pass

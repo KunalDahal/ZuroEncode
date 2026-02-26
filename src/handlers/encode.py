@@ -4,7 +4,10 @@ from datetime import datetime
 from pyrogram import Client, filters
 from pyrogram.types import Message
 from dotenv import load_dotenv
+import logging
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 load_dotenv()
 ALLOWED_VIDEO_EXTENSIONS = {'.mp4', '.mkv', '.webm', '.mov', '.avi', '.mpeg', '.mpg', '.wmv', '.flv', '.3gp'}
 
@@ -95,7 +98,7 @@ async def process_encode_command(client: Client, message: Message, task_queue, u
     position = task_queue.get_queue_position(task_id)
     total_in_queue = len(task_queue.queue)
     is_processing = task_queue.is_processing()
-
+    logger.info(f"DEBUG - send_type value: '{task_data['send_type']}'")
     if position == 1 and not is_processing:
         status = "🔄 Processing soon"
     else:

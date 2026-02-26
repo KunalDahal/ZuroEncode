@@ -27,11 +27,14 @@ class FFmpeg:
     def build_command(self, input_path, output_path, settings):
         input_path = os.path.abspath(input_path)
         output_path = os.path.abspath(output_path)
+        
+        if input_path == output_path:
+            raise ValueError("Input and output paths cannot be the same")
+        
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         
         resolution_str = settings.get('resolution', '1080p')
         dimensions = self._get_resolution_dimensions(resolution_str)
-
         width, height = dimensions.split('x')
         
         codec = settings.get('codec', 'libx264')
@@ -67,7 +70,6 @@ class FFmpeg:
         
         cmd.extend(['-y', output_path])
         
-        logging.info(f"FFmpeg command: {' '.join(cmd)}")
         return cmd
     
     async def execute(self, cmd):
@@ -86,7 +88,6 @@ class FFmpeg:
                     break
                 line = line.decode('utf-8', errors='ignore').strip()
                 error_output.append(line)
-                logging.debug(f"FFmpeg: {line[:200]}")
             
             stdout, stderr = await process.communicate()
             
@@ -97,7 +98,6 @@ class FFmpeg:
             if process.returncode != 0:
                 errors = [line for line in error_output if 'error' in line.lower() or 'failed' in line.lower()]
                 error_msg = "\n".join(errors[-10:]) if errors else "\n".join(error_output[-20:])
-                logging.error(f"FFmpeg error (code {process.returncode}): {error_msg}")
                 return False, f"FFmpeg error (code {process.returncode}): {error_msg[:500]}"
             
             output_file = cmd[-1]
@@ -110,7 +110,7 @@ class FFmpeg:
             return True, None
             
         except FileNotFoundError:
-            return False, "FFmpeg not found in system PATH. Please install FFmpeg"
+            return False, "FFmpeg not found in system PATH"
         except asyncio.CancelledError:
             if 'process' in locals():
                 try:

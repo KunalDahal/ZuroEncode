@@ -64,6 +64,12 @@ async def main():
         
         await handle_encode_in_dm(client, message, task_queue, get_user_settings)
     
+    setup_status_handlers(
+        app=app,
+        task_queue=task_queue,
+        admin_ids=config.admin_ids
+    )
+
     setup_encode_handlers(
         app=app,
         task_queue=task_queue,
@@ -73,12 +79,6 @@ async def main():
     setup_settings_handlers(
         app=app,
         user_settings=get_user_settings
-    )
-    
-    setup_status_handlers(
-        app=app,
-        task_queue=task_queue,
-        admin_ids=config.admin_ids
     )
     
     worker = Worker(task_queue, get_user_settings, ffmpeg, app)
