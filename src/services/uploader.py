@@ -3,9 +3,10 @@ import shutil
 import time
 
 class Uploader:
-    def __init__(self, client, task_data: dict):
+    def __init__(self, client, task_data: dict, task_queue=None):
         self.client = client
         self.task_data = task_data
+        self.task_queue = task_queue
         self._last_time = None
         self._last_bytes = 0
         self._start_time = None
@@ -109,6 +110,15 @@ class Uploader:
             "elapsed": int(total_elapsed),
             "status": "uploading"
         })
+        
+        if self.task_queue:
+            # Use update_status if available
+            if hasattr(self.task_queue, 'update_status'):
+                self.task_queue.update_status(
+                    self.task_data["task_id"],
+                    "uploading",
+                    round(percentage, 2)
+                )
 
     def get_progress(self) -> dict:
         return self.upload_progress.copy()

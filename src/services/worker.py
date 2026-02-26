@@ -36,6 +36,7 @@ class Worker:
                 await asyncio.sleep(1)
                 
             except Exception as e:
+                print(f"Worker error: {e}")
                 await asyncio.sleep(5)
 
     async def stop(self):
@@ -81,8 +82,9 @@ class Worker:
             
             self.task_queue.update_status(task_id, "downloading", 10)
             
+            # Import here to avoid circular imports
             from src.services.downloader import Downloader
-            downloader = Downloader(self.temp_base)
+            downloader = Downloader(self.temp_base, self.task_queue, task_id)
             downloaded_path = await downloader.download(
                 client=self.client,
                 task_data=task
@@ -94,11 +96,13 @@ class Worker:
             self.task_queue.update_status(task_id, "encoding", 40)
             
             user_settings = self.user_settings_getter(task["user_id"])
-            settings = user_settings.get()
+            settings = user_settings.get() if hasattr(user_settings, 'get') else user_settings
             
+            # Import here to avoid circular imports
             from src.services.encoder import Encoder
             encoder = Encoder(self.ffmpeg)
             
+            # Run encoding in thread pool to avoid blocking
             loop = asyncio.get_event_loop()
             encoded_path = await loop.run_in_executor(
                 self.executor,
@@ -112,7 +116,7 @@ class Worker:
             self.task_queue.update_status(task_id, "uploading", 80)
 
             from src.services.uploader import Uploader
-            uploader = Uploader(self.client, task)
+            uploader = Uploader(self.client, task, self.task_queue)
             await uploader.upload()
 
             self.task_queue.remove_task(task_id)
@@ -131,6 +135,7 @@ class Worker:
             
         except Exception as e:
             error_msg = str(e)
+            print(f"Task {task_id} failed: {error_msg}")
             await self.notify_user(
                 task["user_id"], 
                 f"Task Failed\nError: {error_msg[:100]}\n🆔 {task_id[:8]}"
@@ -172,5 +177,5 @@ class Worker:
     async def notify_user(self, user_id: int, message: str):
         try:
             await self.client.send_message(user_id, message)
-        except:
-            pass
+        except Exception as e:
+            print(f"Failed to notify user {user_id}: {e}")

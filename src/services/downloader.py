@@ -3,8 +3,10 @@ import asyncio
 import time
 
 class Downloader:
-    def __init__(self, temp_base: str):
+    def __init__(self, temp_base: str, task_queue=None, task_id=None):
         self.temp_base = temp_base
+        self.task_queue = task_queue
+        self.task_id = task_id
         self._last_time = None
         self._last_bytes = 0
         os.makedirs(self.temp_base, exist_ok=True)
@@ -23,6 +25,7 @@ class Downloader:
         task_id = task_data["task_id"]
         file_id = task_data["file_id"]
         original_file_name = task_data["original_file_name"]
+        self.task_id = task_id
         
         task_folder = os.path.join(self.temp_base, task_id)
         os.makedirs(task_folder, exist_ok=True)
@@ -94,6 +97,15 @@ class Downloader:
             "elapsed": int(total_elapsed),
             "status": "downloading"
         })
+        
+        if self.task_queue and self.task_id:
+            # Use update_status if available
+            if hasattr(self.task_queue, 'update_status'):
+                self.task_queue.update_status(
+                    self.task_id, 
+                    "downloading", 
+                    round(percentage, 2)
+                )
 
     def get_progress(self) -> dict:
         return self.download_progress.copy()

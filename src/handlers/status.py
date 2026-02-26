@@ -4,16 +4,17 @@ from datetime import datetime
 import psutil
 import time
 import humanize
+from pyrogram import enums
 from math import ceil
 
 BOT_START_TIME = time.time()
 
-def setup_status_handlers(app: Client, task_queue, admin_ids, downloader, encoder, uploader):
+def setup_status_handlers(app: Client, task_queue, admin_ids):
     
     @app.on_message(filters.command("status") & filters.private)
     async def status_command(client: Client, message: Message):
         if message.from_user.id not in admin_ids:
-            await message.reply_text("❌ You are not authorized to use this command.", parse_mode="html")
+            await message.reply_text("❌ You are not authorized to use this command.", parse_mode=enums.ParseMode.HTML)
             return
         await show_status(client, message, task_queue, page=0)
     
@@ -91,7 +92,7 @@ async def show_status(client: Client, message: Message, task_queue, page=0, is_c
             status_text += f"┠ Status: <code>{task['status']}</code>\n"
             status_text += f"┠ Speed: N/A | Elapsed: {elapsed}\n"
         else:
-            progress_data = get_task_progress(task, downloader, encoder, uploader)
+            progress_data = get_task_progress(task)
             bar_length = 12
             filled = int(progress_data['percentage'] / 100 * bar_length)
             bar = "■" * filled + "□" * (bar_length - filled)
@@ -160,34 +161,33 @@ async def show_status(client: Client, message: Message, task_queue, page=0, is_c
     reply_markup = InlineKeyboardMarkup(keyboard) if keyboard else None
     
     if is_callback:
-        await message.edit_text(status_text, parse_mode="html", reply_markup=reply_markup)
+        await message.edit_text(status_text, parse_mode=enums.ParseMode.HTML, reply_markup=reply_markup)
     else:
-        await message.reply_text(status_text, parse_mode="html", reply_markup=reply_markup)
+        await message.reply_text(status_text, parse_mode=enums.ParseMode.HTML, reply_markup=reply_markup)
 
-def get_task_progress(task, downloader, encoder, uploader):
+def get_task_progress(task):
     progress = {
         'percentage': task.get('progress', 0),
-        'downloaded': 0,
+        'downloaded': task.get('downloaded_bytes', 0),
         'total_size': task.get('file_size', 0),
-        'speed': 0
+        'speed': task.get('speed', 0)
     }
     
-    if task['status'] == 'downloading':
-        dl_progress = downloader.get_progress() if downloader else {}
-        progress.update({
-            'percentage': dl_progress.get('percentage', 0),
-            'downloaded': dl_progress.get('downloaded', 0),
-            'total_size': dl_progress.get('total_size', task.get('file_size', 0)),
-            'speed': dl_progress.get('speed', 0)
-        })
-    
-    elif task['status'] == 'uploading':
-        ul_progress = uploader.get_progress() if uploader else {}
-        progress.update({
-            'percentage': ul_progress.get('percentage', 0),
-            'downloaded': ul_progress.get('uploaded', 0),
-            'total_size': ul_progress.get('total_size', task.get('file_size', 0)),
-            'speed': ul_progress.get('speed', 0)
-        })
+    if 'progress_details' in task:
+        details = task['progress_details']
+        if task['status'] == 'downloading':
+            progress.update({
+                'percentage': details.get('percentage', progress['percentage']),
+                'downloaded': details.get('downloaded', progress['downloaded']),
+                'total_size': details.get('total_size', progress['total_size']),
+                'speed': details.get('speed', progress['speed'])
+            })
+        elif task['status'] == 'uploading':
+            progress.update({
+                'percentage': details.get('percentage', progress['percentage']),
+                'downloaded': details.get('uploaded', progress['downloaded']),
+                'total_size': details.get('total_size', progress['total_size']),
+                'speed': details.get('speed', progress['speed'])
+            })
     
     return progress

@@ -30,6 +30,16 @@ def parse_filename_from_command(command_text):
     
     return filename_part
 
+def validate_filename_extension(filename):
+    if not filename:
+        return False
+    ext = os.path.splitext(filename)[1].lower()
+    if not ext:
+        return False
+    if ext not in ALLOWED_VIDEO_EXTENSIONS:
+        return False
+    return True
+
 async def process_encode_command(client: Client, message: Message, task_queue, user_settings):
     if not message.reply_to_message:
         await message.reply_text("Reply to a video file.")
@@ -67,6 +77,13 @@ async def process_encode_command(client: Client, message: Message, task_queue, u
         if not output_filename:
             await message.reply_text("Invalid filename format...")
             return
+        
+        is_valid = validate_filename_extension(output_filename)
+        if not is_valid:
+            await message.reply_text(
+                f"Example: `/encode my_video.mp4` or `/encode \"my video with spaces.mkv\"`"
+            )
+            return
 
     settings_obj = user_settings(message.from_user.id)
     settings = settings_obj.get()
@@ -97,11 +114,10 @@ async def process_encode_command(client: Client, message: Message, task_queue, u
     position = task_queue.get_queue_position(task_id)
     total_in_queue = len(task_queue.queue)
     is_processing = task_queue.is_processing()
-    logger.info(f"DEBUG - send_type value: '{task_data['send_type']}'")
     if position == 1 and not is_processing:
-        status = "🔄 Processing soon"
+        status = "Processing"
     else:
-        status = f"⏳ Queued (Position: {position}/{total_in_queue})"
+        status = f"Queued"
     
     await message.reply_text(
         f"**Task Added:** `{task_id}` [`{position}/{total_in_queue}`] || `{output_filename}`\n"
